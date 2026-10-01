@@ -10,7 +10,7 @@ ON_VERCEL = bool(os.environ.get("VERCEL"))
 # For permanent data on Vercel, switch to a hosted DB such as Postgres.
 DB_PATH = "/tmp/agri.db" if ON_VERCEL else os.path.join(BASE, "agri.db")
 
-app = Flask(__name__, static_folder=os.path.join(BASE, "frontend"), static_url_path="")
+app = Flask(__name__, static_folder=os.path.join(BASE, "public"), static_url_path="")
 app.config.update(
     SECRET_KEY=os.environ.get("SECRET_KEY", "dev-only-change-me"),
     SESSION_COOKIE_HTTPONLY=True,
@@ -297,11 +297,18 @@ def handle_error(e):
 
 @app.get("/api/health")
 def health():
-    return jsonify(ok=True, vercel=ON_VERCEL, users=query("SELECT COUNT(*) n FROM users", one=True)["n"])
+    pub = app.static_folder
+    return jsonify(ok=True, vercel=ON_VERCEL, users=query("SELECT COUNT(*) n FROM users", one=True)["n"],
+                   public_folder_found=os.path.isdir(pub),
+                   files=sorted(os.listdir(pub)) if os.path.isdir(pub) else [],
+                   root_files=sorted(os.listdir(BASE)))
 
 # ---------- frontend ----------
 @app.get("/")
 def index():
+    if not os.path.exists(os.path.join(app.static_folder, "index.html")):
+        return ("The API is running, but public/index.html is missing from the deployment. "
+                "Check that the 'public' folder is in your GitHub repo. See /api/health.", 500)
     return send_from_directory(app.static_folder, "index.html")
 
 if __name__ == "__main__":

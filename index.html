@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgriWaste - Smart Agriculture Waste Management</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- Sign in / register -->
+<section id="auth" class="auth hidden">
+  <div class="auth-art">
+    <h1>Turn farm waste into a resource.</h1>
+    <p>Report straw, husk and crop residue, request a pickup, and see it composted, mulched or turned into biogas.</p>
+    <svg viewBox="0 0 400 120" aria-hidden="true"><path d="M0 100 Q50 60 100 90 T200 80 T300 95 T400 70 V120 H0Z" fill="#E0A93B" opacity=".9"/><path d="M0 110 Q60 80 120 105 T240 95 T400 100 V120 H0Z" fill="#1f4d31"/></svg>
+  </div>
+  <div class="auth-card">
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="login">Sign in</button>
+      <button class="tab" data-tab="register">Create account</button>
+    </div>
+
+    <form id="loginForm" class="stack">
+      <label>Email<input type="email" id="loginEmail" required autocomplete="email"></label>
+      <label>Password<input type="password" id="loginPass" required autocomplete="current-password"></label>
+      <button class="btn primary" type="submit">Sign in</button>
+      <div class="demo">
+        <p>Try the demo (password <b>demo123</b>)</p>
+        <div class="row">
+          <button type="button" class="btn ghost sm" data-demo="farmer@demo.com">Farmer</button>
+          <button type="button" class="btn ghost sm" data-demo="worker@demo.com">Collector</button>
+          <button type="button" class="btn ghost sm" data-demo="admin@demo.com">Admin</button>
+        </div>
+      </div>
+    </form>
+
+    <form id="registerForm" class="stack hidden">
+      <label>Full name<input id="regName" required></label>
+      <label>Email<input type="email" id="regEmail" required></label>
+      <label>Phone<input type="tel" id="regPhone"></label>
+      <label>Password (6+ characters)<input type="password" id="regPass" minlength="6" required></label>
+      <label>I am a
+        <select id="regRole"><option value="farmer">Farmer</option><option value="worker">Collection worker</option></select>
+      </label>
+      <button class="btn primary" type="submit">Create account</button>
+    </form>
+    <p id="authError" class="error" role="alert"></p>
+  </div>
+</section>
+
+<!-- App shell -->
+<div id="app" class="shell hidden">
+  <aside class="side">
+    <div class="brand">AgriWaste</div>
+    <nav id="nav"></nav>
+    <div class="who">
+      <div><b id="whoName"></b><span id="whoRole"></span></div>
+      <button class="btn ghost sm" id="logout">Log out</button>
+    </div>
+  </aside>
+  <main id="view" tabindex="-1"></main>
+</div>
+
+<div id="toast" class="toast" role="status"></div>
+<script src="js/app.js"></script>
+</body>
+</html>

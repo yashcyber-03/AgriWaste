@@ -1,0 +1,7 @@
+{
+  "builds": [
+    { "src": "app.py", "use": "@vercel/python",
+      "config": { "includeFiles": ["frontend/**", "schema.sql"] } }
+  ],
+  "routes": [{ "src": "/(.*)", "dest": "app.py" }]
+}

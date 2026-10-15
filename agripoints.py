@@ -112,8 +112,8 @@ def register(app, db_path, auth, db):
     @auth("farmer")
     def ap_summary():
         k = db(); uid = g.user["id"]  # identity comes only from the signed token, never from the client
-        s = k.execute("""SELECT COALESCE(SUM(CASE WHEN entry_type='credit' THEN points END),0) earned,
-            COALESCE(SUM(CASE WHEN entry_type='credit' AND strftime('%Y-%m',created_at)=strftime('%Y-%m','now') THEN points END),0) month,
+        s = k.execute("""SELECT COALESCE(SUM(CASE WHEN entry_type='credit' AND activity_type!='order_refund' THEN points END),0) earned,
+            COALESCE(SUM(CASE WHEN entry_type='credit' AND activity_type!='order_refund' AND strftime('%Y-%m',created_at)=strftime('%Y-%m','now') THEN points END),0) month,
             COALESCE(SUM(CASE entry_type WHEN 'credit' THEN points ELSE -points END),0) balance
             FROM points_ledger WHERE user_id=? AND status='posted'""", (uid,)).fetchone()
         rules = k.execute("SELECT activity_type,points,description FROM points_rules WHERE active=1 AND points>0").fetchall()

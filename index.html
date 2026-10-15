@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Home | AgriStore</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/agristore_frontend/css/agristore.css"></head>
+<body data-page="home">
+<header id="header" class="site-header"></header>
+<main class="wrap">
+<section class="hero"><h1>Farming equipment for every farmer</h1><p class="muted">Use your AgriPoints for discounts. Demo products shown for the college project; prices and stock are examples.</p></section>
+<h2 id="categories" style="margin-bottom:.7rem">Categories</h2><div class="chips" id="chips"></div>
+<h2 id="all-products" style="margin-bottom:.7rem">All Products</h2>
+<div class="filters"><div><label for="search">Search</label><input id="search" type="search" placeholder="e.g. sprayer, gloves"></div>
+<div><label for="category">Category</label><select id="category"><option value="">All categories</option></select></div>
+<div><label for="sort">Sort by</label><select id="sort"><option value="">Featured</option><option value="price_asc">Price: low to high</option><option value="price_desc">Price: high to low</option></select></div>
+<label class="row" style="margin:0"><input type="checkbox" id="instock" style="width:auto"> In stock only</label></div>
+<div class="product-grid" id="products"></div>
+</main>
+<div id="toast" role="status"></div>
+<script src="/agristore_frontend/js/agristore.js"></script>
+</body></html>

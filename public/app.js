@@ -4,7 +4,7 @@ const toast=t=>{const e=$('#toast');e.textContent=t;e.className='show';setTimeou
 const kg=n=>Number(n||0).toLocaleString()+' kg',pill=s=>`<span class="pill ${s}">${s[0].toUpperCase()+s.slice(1)}</span>`;
 const menus={farmer:[['dashboard','📊','Dashboard'],['new','➕','Request pickup'],['requests','📦','My requests'],['guide','♻️','Recycling guide'],['points','🍃','AgriPoints'],['store','🛒','AgriStore']],
  worker:[['dashboard','📊','Dashboard'],['requests','🚚','Collections'],['reports','📈','Reports'],['guide','♻️','Recycling guide']],
- admin:[['dashboard','📊','Dashboard'],['requests','📦','All requests'],['users','👥','Users'],['reports','📈','Reports'],['guide','♻️','Recycling guide']]};
+ admin:[['dashboard','📊','Dashboard'],['requests','📦','All requests'],['users','👥','Users'],['reports','📈','Reports'],['guide','♻️','Recycling guide'],['storeadmin','🛒','Manage AgriStore']]};
 const titles={dashboard:['Dashboard','Your waste at a glance'],new:['Request a pickup','Tell us what you have and where to find it'],requests:['Requests','Track every collection'],guide:['Recycling guide','What happens to each type of waste'],reports:['Reports & analytics','How collection and recycling are going'],users:['Users','Manage accounts']};
 
 $('#tLogin').onclick=()=>setMode('login');$('#tReg').onclick=()=>setMode('reg');
@@ -18,7 +18,7 @@ function out(){localStorage.removeItem('tok');location.reload()}$('#logout').onc
 async function start(){$('#auth').classList.add('hide');$('#app').classList.remove('hide');$('#meName').textContent=me.name;$('#meRole').textContent=me.role;
  cats=await api('/categories');$('#nav').innerHTML=menus[me.role].map(([k,i,t])=>`<button class="nav" data-p="${k}">${i} ${t}</button>`).join('');
  document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>go(b.dataset.p));go('dashboard');pollNotes();setInterval(pollNotes,30000)}
-async function go(p){if(p==='points'||p==='store'){location.href=(p==='points'?'/agripoints':'/agristore');return}page=p;document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('on',b.dataset.p===p));$('#title').textContent=titles[p][0];$('#sub').textContent=titles[p][1];$('#notes').classList.add('hide');
+async function go(p){if(p==='points'||p==='store'||p==='storeadmin'){location.href=({points:'/agripoints',store:'/agristore',storeadmin:'/agristore/admin'})[p];return}page=p;document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('on',b.dataset.p===p));$('#title').textContent=titles[p][0];$('#sub').textContent=titles[p][1];$('#notes').classList.add('hide');
  $('#view').innerHTML='<p class="empty">Loading…</p>';try{await views[p]()}catch(x){$('#view').innerHTML=`<p class="empty">${x.message}</p>`}}
 async function pollNotes(){try{const n=await api('/notifications');window._n=n;const u=n.filter(x=>!x.is_read).length;$('#badge').textContent=u;$('#badge').classList.toggle('hide',!u)}catch{}}
 $('#bell').onclick=async()=>{const b=$('#notes');b.classList.toggle('hide');if(b.classList.contains('hide'))return;

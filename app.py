@@ -1,62 +1,258 @@
-const $=s=>document.querySelector(s),api=async(p,m='GET',b)=>{const r=await fetch('/api'+p,{method:m,headers:{'Content-Type':'application/json',Authorization:'Bearer '+(localStorage.tok||'')},body:b?JSON.stringify(b):undefined});const d=await r.json().catch(()=>({}));if(r.status===401&&localStorage.tok)out();if(!r.ok)throw new Error(d.error||`Server error (${r.status}). The API isn't reachable: run the Flask app or check the Vercel function logs.`);return d};
-let me=null,cats=[],page='dashboard',mode='login';
-const toast=t=>{const e=$('#toast');e.textContent=t;e.className='show';setTimeout(()=>e.className='',2600)};
-const kg=n=>Number(n||0).toLocaleString()+' kg',pill=s=>`<span class="pill ${s}">${s[0].toUpperCase()+s.slice(1)}</span>`;
-const menus={farmer:[['dashboard','📊','Dashboard'],['new','➕','Request pickup'],['requests','📦','My requests'],['guide','♻️','Recycling guide'],['points','🍃','AgriPoints'],['store','🛒','AgriStore']],
- worker:[['dashboard','📊','Dashboard'],['requests','🚚','Collections'],['reports','📈','Reports'],['guide','♻️','Recycling guide']],
- admin:[['dashboard','📊','Dashboard'],['requests','📦','All requests'],['users','👥','Users'],['reports','📈','Reports'],['guide','♻️','Recycling guide']]};
-const titles={dashboard:['Dashboard','Your waste at a glance'],new:['Request a pickup','Tell us what you have and where to find it'],requests:['Requests','Track every collection'],guide:['Recycling guide','What happens to each type of waste'],reports:['Reports & analytics','How collection and recycling are going'],users:['Users','Manage accounts']};
+import os, sqlite3
+from functools import wraps
+from flask import Flask, request, jsonify, g, send_from_directory
+from werkzeug.security import generate_password_hash, check_password_hash
+from itsdangerous import URLSafeTimedSerializer, BadSignature
 
-$('#tLogin').onclick=()=>setMode('login');$('#tReg').onclick=()=>setMode('reg');
-function setMode(m){mode=m;$('#regOnly').classList.toggle('hide',m==='login');$('#tLogin').className=m==='login'?'on':'';$('#tReg').className=m==='reg'?'on':'';$('#authBtn').textContent=m==='login'?'Sign in':'Create account';$('#err').textContent=''}
-$('#authForm').onsubmit=async e=>{e.preventDefault();try{
- if(mode==='reg'){await api('/register','POST',{name:name.value,phone:phone.value,role:role.value,email:email.value,password:password.value});toast('Account created. Signing you in…')}
- await signin(email.value,password.value)}catch(x){$('#err').textContent=x.message}};
-document.querySelectorAll('[data-demo]').forEach(b=>b.onclick=()=>signin(b.dataset.demo,'demo123').catch(x=>$('#err').textContent=x.message));
-async function signin(e,p){const d=await api('/login','POST',{email:e,password:p});localStorage.tok=d.token;localStorage.me=JSON.stringify(d.user);me=d.user;start()}
-function out(){localStorage.removeItem('tok');location.reload()}$('#logout').onclick=out;$('#logoutTop').onclick=out;
-async function start(){$('#auth').classList.add('hide');$('#app').classList.remove('hide');$('#meName').textContent=me.name;$('#meRole').textContent=me.role;
- cats=await api('/categories');$('#nav').innerHTML=menus[me.role].map(([k,i,t])=>`<button class="nav" data-p="${k}">${i} ${t}</button>`).join('');
- document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>go(b.dataset.p));go('dashboard');pollNotes();setInterval(pollNotes,30000)}
-async function go(p){if(p==='points'||p==='store'){location.href=(p==='points'?'/agripoints':'/agristore');return}page=p;document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('on',b.dataset.p===p));$('#title').textContent=titles[p][0];$('#sub').textContent=titles[p][1];$('#notes').classList.add('hide');
- $('#view').innerHTML='<p class="empty">Loading…</p>';try{await views[p]()}catch(x){$('#view').innerHTML=`<p class="empty">${x.message}</p>`}}
-async function pollNotes(){try{const n=await api('/notifications');window._n=n;const u=n.filter(x=>!x.is_read).length;$('#badge').textContent=u;$('#badge').classList.toggle('hide',!u)}catch{}}
-$('#bell').onclick=async()=>{const b=$('#notes');b.classList.toggle('hide');if(b.classList.contains('hide'))return;
- b.innerHTML='<h3 style="margin-bottom:.5rem">Notifications</h3>'+((window._n||[]).map(n=>`<p>${n.is_read?'':'🟢 '}${n.message}</p>`).join('')||'<p class="empty">Nothing new yet.</p>');await api('/notifications/read','POST');$('#badge').classList.add('hide')};
+BASE = os.path.dirname(os.path.abspath(__file__))
+# Vercel's filesystem is read-only except /tmp (demo data resets there; use Postgres for production)
+DB = "/tmp/agri.db" if os.environ.get("VERCEL") else os.path.join(BASE, "agri.db")
+app = Flask(__name__, static_folder=None)
+signer = URLSafeTimedSerializer(os.environ.get("SECRET_KEY", "change-me-in-production"))
 
-const views={
-async dashboard(){const[s,r]=await Promise.all([api('/dashboard'),api('/requests')]);const by={};r.forEach(x=>by[x.category]=(by[x.category]||0)+x.quantity_kg);const mx=Math.max(1,...Object.values(by));
- $('#view').innerHTML=`<div class="grid4"><div class="card stat lead"><span>Total waste reported</span><strong>${kg(s.reported)}</strong></div><div class="card stat"><span>Collected</span><strong>${kg(s.collected)}</strong></div><div class="card stat"><span>Recycled</span><strong>${kg(s.recycled)}</strong></div><div class="card stat"><span>Pending requests</span><strong>${s.pending}</strong></div></div>
- <div class="two"><div class="card"><h3>Waste by type</h3>${Object.entries(by).map(([k,v])=>`<div class="bar"><span>${k}</span><div><i style="width:${v/mx*100}%"></i></div><b>${kg(v)}</b></div>`).join('')||'<p class="empty">No waste reported yet.</p>'}</div>
- <div class="card"><h3 style="margin-bottom:.6rem">Latest activity</h3>${r.slice(0,5).map(x=>`<p style="display:flex;justify-content:space-between;margin:.6rem 0"><span>#${x.id} ${x.category}</span>${pill(x.status)}</p>`).join('')||'<p class="empty">No requests yet.</p>'}</div></div>`;
- if(me.role==='farmer')api('/agripoints/summary').then(s=>{if(page!=='dashboard')return;$('#view').insertAdjacentHTML('beforeend',`<a href="/agripoints" class="card" style="display:flex;align-items:center;gap:1rem;margin-top:1.2rem;text-decoration:none;color:inherit"><span style="width:48px;height:48px;border-radius:50%;background:var(--wheat);display:grid;place-items:center;font-size:1.4rem">🍃</span><div style="flex:1"><b>AgriPoints</b><div style="color:var(--mute);font-size:.88rem">Earn reward points for collected and recycled waste</div></div><strong style="font-family:'Bricolage Grotesque',serif;font-size:1.6rem">${s.balance} pts ›</strong></a>`)}).catch(()=>{})
-},
-async new(){$('#view').innerHTML=`<form class="card" id="rf" style="max-width:640px"><div class="row"><div class="field"><label for="cat">Waste type</label><select id="cat">${cats.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select></div>
- <div class="field"><label for="qty">Quantity (kg)</label><input id="qty" type="number" min="1" step="any" required placeholder="e.g. 500"></div></div><div class="tip" id="tip"></div>
- <div class="field"><label for="addr">Pickup location</label><input id="addr" required placeholder="Village, road or landmark"></div>
- <button type="button" class="btn alt sm" id="gps">📍 Use my current location</button> <small id="gpsOut" style="color:var(--mute)"></small>
- <div class="field" style="margin-top:1rem"><label for="notes2">Notes (optional)</label><textarea id="notes2" rows="2" placeholder="Access instructions, best time…"></textarea></div>
- <div class="err" id="rerr"></div><button class="btn">Submit request</button></form>`;
- let pos={};const tip=()=>{const c=cats.find(c=>c.id==cat.value);$('#tip').innerHTML=`<b>Best use: ${c.recycling_method}.</b> ${c.recycling_tip}`};cat.onchange=tip;tip();
- gps.onclick=()=>navigator.geolocation?navigator.geolocation.getCurrentPosition(p=>{pos={latitude:p.coords.latitude,longitude:p.coords.longitude};gpsOut.textContent=`Saved ${pos.latitude.toFixed(4)}, ${pos.longitude.toFixed(4)}`;if(!addr.value)addr.value='GPS location'},()=>gpsOut.textContent='Location blocked. Type the address instead.'):0;
- rf.onsubmit=async e=>{e.preventDefault();try{await api('/requests','POST',{category_id:cat.value,quantity_kg:qty.value,address:addr.value,notes:notes2.value,...pos});toast('Request submitted');pollNotes();go('requests')}catch(x){rerr.textContent=x.message}}},
-async requests(){const r=await api('/requests'),w=me.role!=='farmer';window._r=r;
- const act=x=>{if(w){const n={pending:['accepted','Accept'],accepted:['scheduled','Schedule'],scheduled:['collected','Mark collected'],collected:['recycled','Mark recycled']}[x.status];return n?`<button class="btn sm" onclick="setSt(${x.id},'${n[0]}')">${n[1]}</button>`:'—'}
-  return ['collected','recycled'].includes(x.status)?(x.rating?`${'★'.repeat(x.rating)}`:`<button class="btn alt sm" onclick="rate(${x.id})">Rate service</button>`):'—'};
- $('#view').innerHTML=`<div class="card table" style="overflow-x:auto">${r.length?`<table><tr><th>#</th>${w?'<th>Farmer</th>':''}<th>Waste</th><th>Quantity</th><th>Location</th><th>Status</th><th>${w?'Action':'Feedback'}</th></tr>${r.map(x=>`<tr><td>${x.id}</td>${w?`<td><button class="btn alt sm" onclick="info(${x.id})">${x.farmer} ›</button></td>`:''}<td>${x.category}</td><td>${kg(x.quantity_kg)}</td><td>${x.latitude?`<a href="https://maps.google.com/?q=${x.latitude},${x.longitude}" target="_blank" rel="noopener">📍 ${x.address}</a>`:x.address}</td><td>${pill(x.status)}${x.scheduled_date?`<br><small>${x.scheduled_date}</small>`:''}</td><td>${act(x)}</td></tr>`).join('')}</table>`:'<p class="empty">No requests yet. Submit your first pickup request.</p>'}</div>`},
-guide(){$('#view').innerHTML=`<div class="guide">${cats.map(c=>`<div class="card"><h3>${c.name}</h3><em>${c.recycling_method}</em><p style="color:var(--mute);line-height:1.5">${c.recycling_tip}</p></div>`).join('')}</div>`},
-async reports(){const d=await api('/reports'),mx=Math.max(1,...d.by_category.map(x=>x.kg));
- $('#view').innerHTML=`<div class="two"><div class="card"><h3>Volume by waste type</h3>${d.by_category.map(x=>`<div class="bar"><span>${x.name}</span><div><i style="width:${x.kg/mx*100}%"></i></div><b>${kg(x.kg)}</b></div>`).join('')}</div>
- <div><div class="card" style="margin-bottom:1rem"><h3>Requests by status</h3><p style="display:flex;gap:.5rem;flex-wrap:wrap">${d.by_status.map(s=>`${pill(s.status)} <b>${s.n}</b>`).join(' &nbsp; ')}</p></div><div class="card stat"><span>Average service rating (${d.rating.n} reviews)</span><strong>${d.rating.avg??'—'} ★</strong></div></div></div>`},
-async users(){const u=await api('/admin/users');$('#view').innerHTML=`<div class="card" style="overflow-x:auto"><table><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr>${u.map(x=>`<tr><td>${x.name}</td><td>${x.email}</td><td>${x.role}</td><td>${x.id===me.id?'':`<button class="btn alt sm" onclick="delU(${x.id})">Remove</button>`}</td></tr>`).join('')}</table></div>`}};
-function info(id){const x=window._r.find(r=>r.id===id),v=(a,b)=>a?b:'<span style="color:var(--mute)">Not provided</span>';
- dlg.innerHTML=`<h3>Request #${x.id} · ${pill(x.status)}</h3><dl><dt>Farmer</dt><dd>${x.farmer}</dd><dt>Phone</dt><dd>${v(x.farmer_phone,`<a href="tel:${x.farmer_phone}">${x.farmer_phone}</a>`)}</dd><dt>Email</dt><dd><a href="mailto:${x.farmer_email}">${x.farmer_email}</a></dd><dt>Waste</dt><dd>${x.category} · ${kg(x.quantity_kg)}</dd><dt>Address</dt><dd>${x.address}</dd><dt>GPS</dt><dd>${v(x.latitude,`<a href="https://maps.google.com/?q=${x.latitude},${x.longitude}" target="_blank" rel="noopener">Open in Maps</a>`)}</dd><dt>Notes</dt><dd>${v(x.notes,x.notes)}</dd></dl><button class="btn" onclick="dlg.close()">Close</button>`;dlg.showModal()}
-async function setSt(id,status){let scheduled_date;if(status==='scheduled'){scheduled_date=prompt('Pickup date (YYYY-MM-DD)',new Date(Date.now()+864e5).toISOString().slice(0,10));if(!scheduled_date)return}
- try{await api(`/requests/${id}/status`,'PUT',{status,scheduled_date});toast('Status updated · farmer notified');go('requests')}catch(x){toast(x.message)}}
-function rate(id){let n=0;const q=s=>dlg.querySelectorAll(s);
- dlg.innerHTML=`<h3>Rate collection #${id}</h3><p style="color:var(--mute);margin:.3rem 0 .8rem">How was the pickup service?</p><div style="font-size:2.2rem;display:flex;gap:.2rem">${[1,2,3,4,5].map(i=>`<button type="button" data-s="${i}" aria-label="${i} star" style="background:none;border:0;cursor:pointer;color:#C9D3C6;font-size:inherit;padding:0 .1rem">★</button>`).join('')}</div><div class="field" style="margin-top:1rem"><textarea id="fbc" rows="3" placeholder="Tell us more (optional)"></textarea></div><div class="err" id="ferr"></div><div style="display:flex;gap:.5rem"><button class="btn" id="fbs">Submit</button><button class="btn alt" onclick="dlg.close()">Cancel</button></div>`;
- q('[data-s]').forEach(b=>b.onclick=()=>{n=+b.dataset.s;q('[data-s]').forEach(x=>x.style.color=+x.dataset.s<=n?'#E3A83B':'#C9D3C6')});
- fbs.onclick=async()=>{if(!n){ferr.textContent='Please choose a star rating.';return}try{await api('/feedback','POST',{request_id:id,rating:n,comment:fbc.value});dlg.close();toast('Thanks for your feedback');go('requests')}catch(x){ferr.textContent=x.message}};dlg.showModal()}
-async function delU(id){if(confirm('Remove this user and their requests?')){await api('/admin/users/'+id,'DELETE');go('users')}}
-try{me=JSON.parse(localStorage.me||'null')}catch{}
-if(localStorage.tok&&me)start();
+CATEGORIES = [
+    ("Crop residue", "Mulching", "Chop and spread over soil to retain moisture and suppress weeds."),
+    ("Straw", "Biogas / Bedding", "Bale for animal bedding or feed it to a biogas digester."),
+    ("Husk", "Biofuel briquettes", "Press into briquettes or use as clean-burning fuel."),
+    ("Leaves", "Composting", "Layer with green waste and turn weekly; ready in 8-10 weeks."),
+    ("Fruit & vegetable waste", "Biogas / Composting", "High moisture: ideal for biogas or vermicompost."),
+    ("Animal-feed residue", "Recycling", "Dry and repurpose as feed supplement or pellets."),
+]
+
+def db():
+    if "db" not in g:
+        g.db = sqlite3.connect(DB); g.db.row_factory = sqlite3.Row
+        g.db.execute("PRAGMA foreign_keys=ON")
+    return g.db
+
+@app.teardown_appcontext
+def close_db(_):
+    d = g.pop("db", None)
+    if d: d.close()
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  phone TEXT,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('farmer','worker','admin')),
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS categories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  recycling_method TEXT NOT NULL,   -- composting, mulching, biogas...
+  recycling_tip TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  farmer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category_id INTEGER NOT NULL REFERENCES categories(id),
+  worker_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  quantity_kg REAL NOT NULL CHECK (quantity_kg > 0),
+  address TEXT NOT NULL,
+  latitude REAL, longitude REAL,
+  notes TEXT,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','accepted','scheduled','collected','recycled')),
+  scheduled_date TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  message TEXT NOT NULL,
+  is_read INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  request_id INTEGER NOT NULL UNIQUE REFERENCES requests(id) ON DELETE CASCADE,
+  farmer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  comment TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_req_status ON requests(status);
+CREATE INDEX IF NOT EXISTS idx_req_farmer ON requests(farmer_id);
+"""
+
+def init_db():
+    con = sqlite3.connect(DB)
+    con.executescript(SCHEMA)
+    if not con.execute("SELECT 1 FROM users").fetchone():
+        con.executemany("INSERT INTO categories(name,recycling_method,recycling_tip) VALUES(?,?,?)", CATEGORIES)
+        for n, e, r in [("Demo Farmer", "farmer@demo.com", "farmer"),
+                        ("Demo Collector", "worker@demo.com", "worker"),
+                        ("Demo Admin", "admin@demo.com", "admin")]:
+            con.execute("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)",
+                        (n, e, generate_password_hash("demo123"), r))
+        seed = [(1, 1, 450, "Plot 12, Khadki Road, Daund", "collected"), (1, 2, 1200, "Plot 12, Khadki Road, Daund", "recycled"),
+                (1, 4, 180, "Near Water Tank, Yavat", "scheduled"), (1, 5, 320, "Market Yard, Daund", "pending"),
+                (1, 3, 600, "Village Patas", "accepted")]
+        for f, c, q, a, s in seed:
+            con.execute("INSERT INTO requests(farmer_id,category_id,quantity_kg,address,status,worker_id) VALUES(?,?,?,?,?,2)", (f, c, q, a, s))
+        con.execute("UPDATE users SET phone='+91 98765 43210' WHERE email='farmer@demo.com'")
+        con.commit()
+    con.close()
+init_db()
+
+def auth(*roles):
+    def deco(fn):
+        @wraps(fn)
+        def wrap(*a, **k):
+            tok = request.headers.get("Authorization", "").replace("Bearer ", "")
+            try:
+                uid = signer.loads(tok, max_age=60 * 60 * 24 * 7)
+            except BadSignature:
+                return jsonify(error="Please sign in again."), 401
+            u = db().execute("SELECT id,name,email,role FROM users WHERE id=?", (uid,)).fetchone()
+            if not u: return jsonify(error="Account not found."), 401
+            if roles and u["role"] not in roles: return jsonify(error="You don't have access to this."), 403
+            g.user = dict(u)
+            return fn(*a, **k)
+        return wrap
+    return deco
+
+def notify(uid, msg):
+    db().execute("INSERT INTO notifications(user_id,message) VALUES(?,?)", (uid, msg))
+
+@app.post("/api/register")
+def register():
+    d = request.get_json(force=True)
+    if not all(d.get(k) for k in ("name", "email", "password")) or len(d["password"]) < 6:
+        return jsonify(error="Name, email and a password of 6+ characters are required."), 400
+    role = d.get("role") if d.get("role") in ("farmer", "worker") else "farmer"
+    try:
+        db().execute("INSERT INTO users(name,email,phone,password_hash,role) VALUES(?,?,?,?,?)",
+                     (d["name"].strip(), d["email"].lower().strip(), d.get("phone"), generate_password_hash(d["password"]), role))
+        db().commit()
+    except sqlite3.IntegrityError:
+        return jsonify(error="That email is already registered."), 409
+    return jsonify(ok=True), 201
+
+@app.post("/api/login")
+def login():
+    d = request.get_json(force=True)
+    u = db().execute("SELECT * FROM users WHERE email=?", ((d.get("email") or "").lower().strip(),)).fetchone()
+    if not u or not check_password_hash(u["password_hash"], d.get("password", "")):
+        return jsonify(error="Incorrect email or password."), 401
+    return jsonify(token=signer.dumps(u["id"]), user={"id": u["id"], "name": u["name"], "email": u["email"], "role": u["role"]})
+
+@app.get("/api/categories")
+@auth()
+def categories():
+    return jsonify([dict(r) for r in db().execute("SELECT * FROM categories")])
+
+@app.post("/api/requests")
+@auth("farmer")
+def add_request():
+    d = request.get_json(force=True)
+    try:
+        qty = float(d["quantity_kg"]); cid = int(d["category_id"])
+        assert qty > 0 and d["address"].strip()
+    except Exception:
+        return jsonify(error="Choose a waste type, enter a quantity and an address."), 400
+    cur = db().execute("INSERT INTO requests(farmer_id,category_id,quantity_kg,address,latitude,longitude,notes) VALUES(?,?,?,?,?,?,?)",
+                       (g.user["id"], cid, qty, d["address"].strip(), d.get("latitude"), d.get("longitude"), d.get("notes")))
+    for w in db().execute("SELECT id FROM users WHERE role IN ('worker','admin')"):
+        notify(w["id"], f"New collection request #{cur.lastrowid} ({qty:g} kg).")
+    notify(g.user["id"], f"Request #{cur.lastrowid} submitted. We'll notify you when it's accepted.")
+    db().commit()
+    return jsonify(id=cur.lastrowid), 201
+
+@app.get("/api/requests")
+@auth()
+def list_requests():
+    q = """SELECT r.*, c.name AS category, u.name AS farmer, u.email AS farmer_email, u.phone AS farmer_phone, f.rating FROM requests r
+           JOIN categories c ON c.id=r.category_id JOIN users u ON u.id=r.farmer_id
+           LEFT JOIN feedback f ON f.request_id=r.id"""
+    args = ()
+    if g.user["role"] == "farmer": q += " WHERE r.farmer_id=?"; args = (g.user["id"],)
+    return jsonify([dict(r) for r in db().execute(q + " ORDER BY r.id DESC", args)])
+
+FLOW = {"accepted": "accepted", "scheduled": "scheduled", "collected": "collected", "recycled": "recycled"}
+
+@app.put("/api/requests/<int:rid>/status")
+@auth("worker", "admin")
+def set_status(rid):
+    d = request.get_json(force=True); st = d.get("status")
+    r = db().execute("SELECT * FROM requests WHERE id=?", (rid,)).fetchone()
+    if not r or st not in FLOW: return jsonify(error="Invalid request or status."), 400
+    db().execute("UPDATE requests SET status=?, worker_id=?, scheduled_date=COALESCE(?,scheduled_date), updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                 (st, g.user["id"], d.get("scheduled_date"), rid))
+    msg = {"accepted": "was accepted", "scheduled": f"is scheduled for {d.get('scheduled_date') or 'soon'}",
+           "collected": "has been collected", "recycled": "has been recycled"}[st]
+    notify(r["farmer_id"], f"Your collection request #{rid} {msg}.")
+    db().commit()
+    return jsonify(ok=True)
+
+@app.get("/api/dashboard")
+@auth()
+def dashboard():
+    w, a = ("WHERE farmer_id=?", (g.user["id"],)) if g.user["role"] == "farmer" else ("", ())
+    row = db().execute(f"""SELECT COALESCE(SUM(quantity_kg),0) reported,
+        COALESCE(SUM(CASE WHEN status IN ('collected','recycled') THEN quantity_kg END),0) collected,
+        COALESCE(SUM(CASE WHEN status='recycled' THEN quantity_kg END),0) recycled,
+        COUNT(CASE WHEN status='pending' THEN 1 END) pending, COUNT(*) total FROM requests {w}""", a).fetchone()
+    return jsonify(dict(row))
+
+@app.get("/api/reports")
+@auth("worker", "admin")
+def reports():
+    by_cat = db().execute("SELECT c.name, COALESCE(SUM(r.quantity_kg),0) kg FROM categories c LEFT JOIN requests r ON r.category_id=c.id GROUP BY c.id").fetchall()
+    by_status = db().execute("SELECT status, COUNT(*) n FROM requests GROUP BY status").fetchall()
+    rating = db().execute("SELECT ROUND(AVG(rating),1) avg, COUNT(*) n FROM feedback").fetchone()
+    return jsonify(by_category=[dict(r) for r in by_cat], by_status=[dict(r) for r in by_status], rating=dict(rating))
+
+@app.get("/api/notifications")
+@auth()
+def notifications():
+    rows = db().execute("SELECT * FROM notifications WHERE user_id=? ORDER BY id DESC LIMIT 20", (g.user["id"],)).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+@app.post("/api/notifications/read")
+@auth()
+def read_notes():
+    db().execute("UPDATE notifications SET is_read=1 WHERE user_id=?", (g.user["id"],)); db().commit()
+    return jsonify(ok=True)
+
+@app.post("/api/feedback")
+@auth("farmer")
+def feedback():
+    d = request.get_json(force=True)
+    r = db().execute("SELECT id FROM requests WHERE id=? AND farmer_id=? AND status IN ('collected','recycled')", (d.get("request_id"), g.user["id"])).fetchone()
+    if not r or not 1 <= int(d.get("rating", 0)) <= 5: return jsonify(error="You can rate completed collections only."), 400
+    try:
+        db().execute("INSERT INTO feedback(request_id,farmer_id,rating,comment) VALUES(?,?,?,?)", (r["id"], g.user["id"], int(d["rating"]), d.get("comment")))
+        db().commit()
+    except sqlite3.IntegrityError:
+        return jsonify(error="You already rated this collection."), 409
+    return jsonify(ok=True), 201
+
+@app.get("/api/admin/users")
+@auth("admin")
+def users():
+    return jsonify([dict(r) for r in db().execute("SELECT id,name,email,role,created_at FROM users ORDER BY id")])
+
+@app.delete("/api/admin/users/<int:uid>")
+@auth("admin")
+def del_user(uid):
+    if uid == g.user["id"]: return jsonify(error="You can't delete your own account."), 400
+    db().execute("DELETE FROM users WHERE id=?", (uid,)); db().commit()
+    return jsonify(ok=True)
+
+import agripoints  # AgriPoints add-on (separate module, own tables and pages)
+agripoints.register(app, DB, auth, db)
+import agristore  # AgriStore add-on (products, cart, orders); uses the AgriPoints ledger
+agristore.register(app, DB, auth, db)
+
+@app.get("/")
+def home():
+    return send_from_directory(os.path.join(BASE, "public"), "index.html")
+
+if __name__ == "__main__":
+    app.run(debug=True)
